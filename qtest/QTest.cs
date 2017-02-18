@@ -82,13 +82,14 @@ namespace qtest
             try
             {
                 string[] limits = File.ReadAllLines(TestFolder + LIMIT_FILE);
-                if (limits.Length != 2)
+                if (limits.Length < 1)
                 {
-                    Console.WriteLine("Invalid limits.txt, correct format:\n <time limit, ms>\n <memory limit, bytes>");
+                    //Console.WriteLine("Invalid limits.txt, correct format:\n <time limit, ms>\n <memory limit, bytes>");
+                    Console.WriteLine("Invalid limits.txt, correct format:\n <time limit, ms>");
                 }
 
                 timeLimit = int.Parse(limits[0]);
-                memoryLimit = long.Parse(limits[1]);
+                //memoryLimit = long.Parse(limits[1]);
             }
             catch (FileNotFoundException)
             {
@@ -122,7 +123,6 @@ namespace qtest
                     TestResults.Add(curResult);
                     continue;
                 }
-
                 curResult = Check(testOutputs[i], curResult);
                 TestResults.Add(curResult);
             }
@@ -255,40 +255,41 @@ namespace qtest
             }
             runTime.Start();
 
+            List<string> output = new List<string>();
+            testProc.OutputDataReceived += delegate(object sender, DataReceivedEventArgs ea)
+            {
+                output.Add(ea.Data);
+            };
+            testProc.BeginOutputReadLine();
+
             for (int i = 0; i < testInput.Length; ++i)
             {
                 testProc.StandardInput.WriteLine(testInput[i]); // check: do testInput strings already end with line terminators?
             }
 
-            bool tle = !testProc.WaitForExit(timeLimitMillis - (int)runTime.ElapsedMilliseconds); // true if tle
+            bool tle;
+            if ((timeLimitMillis - (int)runTime.ElapsedMilliseconds) <= 0) tle = true;
+            else tle = !testProc.WaitForExit(timeLimitMillis - (int)runTime.ElapsedMilliseconds); // true if tle
             if (tle) testProc.Kill();
             runTime.Stop();
+
             testProc.WaitForExit(); // wait for kill
 
             // long usedMem = testProc.PeakWorkingSet64;
             long usedMem = 1; // TODO: find out how to get memory usage after process termination
             bool mle = usedMem > memLimitBytes;
             int exitCode = testProc.ExitCode;
-
-            List<string> output = new List<string>();
-
-            if (!tle)
-            {
-                while (!testProc.StandardOutput.EndOfStream)
-                {
-                    output.Add(testProc.StandardOutput.ReadLine());
-                }
-            }
-
+            output.RemoveAt(output.Count - 1); // outputdatareceived adds an extra line to output, remove it
+ 
             Result res = new Result();
             if (tle)
             {
                 res.result = Verdict.TimeLimitExceeded;
             }
-            else if (mle)
+            /*else if (mle)
             {
                 res.result = Verdict.MemoryLimitExceeded;
-            }
+            }*/
             else if (exitCode != 0)
             {
                 res.result = Verdict.RuntimeError;
