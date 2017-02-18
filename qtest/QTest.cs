@@ -34,10 +34,24 @@ namespace qtest
          *      example2
          *          in.txt
          *          out.txt
+         *      tests.txt
+         *          (text file example)
+         *          _in
+         *          3 5
+         *          _out
+         *          8
+         *          _in
+         *          2 2
+         *          _out
+         *          4
          */
         const string INPUT_FILE = "in.txt";
         const string OUTPUT_FILE = "out.txt";
         const string LIMIT_FILE = "limits.txt";
+        const string TEST_FILE = "tests.txt";
+
+        const string INPUT_START = "_in";
+        const string OUTPUT_START = "_out";
         
         const string DEFAULT_CHECKER = "checker.exe";
 
@@ -87,39 +101,20 @@ namespace qtest
                 return;
             }
 
-            // get all test subfolders
-            // each folder should contain in.txt and out.txt
-            string[] testFolders = Directory.GetDirectories(TestFolder);
+            List<string[]>[] tCases = GetTestCases();
 
-            if (testFolders.Length == 0)
-            {
-                Console.WriteLine("No tests found");
-                return;
-            }
+            List<string[]> testInputs = tCases[0];
+            List<string[]> testOutputs = tCases[1];
 
             //Console.WriteLine("Time limit: " + timeLimit + " ms, memory limit: " + (memoryLimit / 1000) + " kB."); // TODO: uncomment when memory bug is fixed
             Console.WriteLine("Time limit: " + timeLimit + " ms.");
-            Console.WriteLine("Running " + testFolders.Length + " test(s)...");
+            Console.WriteLine("Running " + testInputs.Count + " test(s)...");
             Console.WriteLine();
 
-            for (int i = 0; i < testFolders.Length; ++i)
+            for (int i = 0; i < testInputs.Count; ++i)
             {
-                string currentFolder = testFolders[i] + "\\";
-                string[] testInput;
-                string[] testOutput;
-                try
-                {
-                    testInput = File.ReadAllLines(currentFolder + INPUT_FILE);
-                    testOutput = File.ReadAllLines(currentFolder + OUTPUT_FILE);
-                }
-                catch (FileNotFoundException)
-                {
-                    Console.WriteLine("Test #" + (i+1) + ": A test input or output is missing.");
-                    return;
-                }
-
                 // run current test case
-                Result curResult = Execute(testInput, timeLimit, memoryLimit);
+                Result curResult = Execute(testInputs[i], timeLimit, memoryLimit);
 
                 // either TLE, MLE or RTE, no need to compare outputs
                 if (curResult.result != Verdict.ExecutionOk)
@@ -128,11 +123,105 @@ namespace qtest
                     continue;
                 }
 
-                curResult = Check(testOutput, curResult);
+                curResult = Check(testOutputs[i], curResult);
                 TestResults.Add(curResult);
             }
 
             PrintResults(timeLimit, memoryLimit);
+        }
+
+        /// <summary>
+        /// Read test cases from tests.txt and test folders
+        /// </summary>
+        /// <returns></returns>
+        static List<string[]>[] GetTestCases()
+        {
+            List<string[]> testInputs = new List<string[]>();
+            List<string[]> testOutputs = new List<string[]>();
+
+            // all lines from tests.txt
+            string[] testFileCont = null;
+            try
+            {
+                testFileCont = File.ReadAllLines(TestFolder + TEST_FILE);
+            }
+            catch (FileNotFoundException)
+            {
+            }
+
+            if (testFileCont != null)
+            {
+                // read tests.txt
+                bool isInput = false; // are we currently reading input or output
+                List<string> curData = new List<string>();
+
+                for (int i = 0; i <= testFileCont.Length; ++i) // intentional <= to register last test
+                {
+                    if (i == testFileCont.Length || testFileCont[i] == INPUT_START || testFileCont[i] == OUTPUT_START) // end of test case
+                    {
+                        if (curData.Count != 0)
+                        {
+                            if (isInput) testInputs.Add(curData.ToArray());
+                            else testOutputs.Add(curData.ToArray());
+                            curData.Clear();
+                        }
+                        if (i < testFileCont.Length)
+                        {
+                            bool nIsInput = testFileCont[i] == INPUT_START;
+                            if (nIsInput == isInput)
+                            {
+                                Console.WriteLine("Multiple test inputs or outputs in a row");
+                                Environment.Exit(1);
+                            }
+                            isInput = nIsInput;
+                        }
+                    }
+                    else
+                    {
+                        curData.Add(testFileCont[i]);
+                    }
+                }
+            }
+
+            // get all test subfolders
+            // each folder should contain in.txt and out.txt
+            string[] testFolders = Directory.GetDirectories(TestFolder);
+
+            for (int i = 0; i < testFolders.Length; ++i)
+            {
+                string currentFolder = testFolders[i] + "\\";
+                string[] testInput = null;
+                string[] testOutput = null;
+                try
+                {
+                    testInput = File.ReadAllLines(currentFolder + INPUT_FILE);
+                    testOutput = File.ReadAllLines(currentFolder + OUTPUT_FILE);
+                }
+                catch (FileNotFoundException)
+                {
+                    Console.WriteLine("Test folder #" + (i + 1) + ": A test input or output is missing.");
+                    Environment.Exit(1);
+                }
+                testInputs.Add(testInput);
+                testOutputs.Add(testOutput);
+            }
+
+            // sanity checks
+            if (testInputs.Count != testOutputs.Count)
+            {
+                Console.WriteLine("Number of test inputs and outputs doesn't match (" + testInputs.Count + " inputs, " + testOutputs.Count + " outputs)");
+                Environment.Exit(1);
+            }
+            if (testInputs.Count == 0)
+            {
+                Console.WriteLine("No tests found");
+                Environment.Exit(1);
+            }
+
+            List<string[]>[] res = new List<string[]>[2];
+            res[0] = testInputs;
+            res[1] = testOutputs;
+            return res;
         }
 
         /// <summary>
@@ -241,6 +330,11 @@ namespace qtest
             return runResult;
         }
 
+        /// <summary>
+        /// Output formatted test results.
+        /// </summary>
+        /// <param name="timeLimit"></param>
+        /// <param name="memoryLimit"></param>
         static void PrintResults(int timeLimit, long memoryLimit)
         {
             bool accepted = true;
