@@ -12,6 +12,7 @@ namespace qtest
         WrongAnswer,
         TimeLimitExceeded,
         MemoryLimitExceeded,
-        RuntimeError
+        RuntimeError,
+        TimeLimitPassed
     }
 }

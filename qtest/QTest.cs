@@ -44,6 +44,10 @@ namespace qtest
          *          2 2
          *          _out
          *          4
+         *          _in
+         *          1000000000000 1000000000000
+         *          _out
+         *          #any
          */
         const string INPUT_FILE = "in.txt";
         const string OUTPUT_FILE = "out.txt";
@@ -52,6 +56,8 @@ namespace qtest
 
         const string INPUT_START = "_in";
         const string OUTPUT_START = "_out";
+
+        const string ANY_ANSWER = "#any"; // if specified, user answer is always correct. Allows large test cases for which correct answers are not known
         
         const string DEFAULT_CHECKER = "checker.exe";
 
@@ -313,6 +319,11 @@ namespace qtest
         /// <returns></returns>
         static Result Check(string[] correctOutput, Result runResult)
         {
+            if (correctOutput.Length != 0 && runResult.output.Length != 0 && correctOutput[0] == ANY_ANSWER)
+            {
+                runResult.result = Verdict.TimeLimitPassed;
+                return runResult;
+            }
             if (correctOutput.Length != runResult.output.Length)
             {
                 runResult.result = Verdict.WrongAnswer;
@@ -341,7 +352,7 @@ namespace qtest
             bool accepted = true;
             for (int i = 0; i < TestResults.Count; ++i)
             {
-                if (TestResults[i].result != Verdict.Accepted) accepted = false;
+                if (TestResults[i].result != Verdict.Accepted && TestResults[i].result != Verdict.TimeLimitPassed) accepted = false;
             }
 
             Console.Write("Verdict: ");
@@ -363,7 +374,7 @@ namespace qtest
             {
                 Console.ResetColor();
                 Console.Write("Test #" + (i + 1) + ": ");
-                if (TestResults[i].result == Verdict.Accepted) Console.ForegroundColor = ConsoleColor.Green;
+                if (TestResults[i].result == Verdict.Accepted || TestResults[i].result == Verdict.TimeLimitPassed) Console.ForegroundColor = ConsoleColor.Green;
                 else Console.ForegroundColor = ConsoleColor.Red;
                 switch (TestResults[i].result)
                 {
@@ -382,6 +393,9 @@ namespace qtest
                     case Verdict.RuntimeError:
                         Console.Write("Runtime error");
                         break;
+                    case Verdict.TimeLimitPassed:
+                        Console.Write("Time limit passed");
+                        break;
                     default:
                         break;
                 }
@@ -396,14 +410,47 @@ namespace qtest
                 Console.Write((TestResults[i].memoryBytes / 1000) + " kB used"); // TODO: uncomment when memory bug is fixed
                 Console.Write(")");*/
                 Console.WriteLine();
+
+                // how much of the output do we print
+                const int MAX_LINES = 5;
+                const int MAX_CHARS = 64;
+
                 if (TestResults[i].result == Verdict.WrongAnswer)
                 {
                     Console.WriteLine("Incorrect output: ");
-                    for (int j = 0; j < TestResults[i].output.Length; ++j)
-                    {
-                        Console.WriteLine(TestResults[i].output[j]);
-                    }
+                    PrintOutput(TestResults[i].output, MAX_LINES, MAX_CHARS);
+                }   
+
+                if (TestResults[i].result == Verdict.TimeLimitPassed)
+                {
+                    Console.WriteLine("Test output: ");
+                    PrintOutput(TestResults[i].output, MAX_LINES, MAX_CHARS);
                 }
+            }
+        }
+
+        /// <summary>
+        /// Print a part of the output.
+        /// </summary>
+        /// <param name="output">Test output</param>
+        /// <param name="maxLines">Max lines printed</param>
+        /// <param name="maxChars">Max chars on a single line</param>
+        static void PrintOutput(string[] output, int maxLines, int maxChars)
+        {
+            for (int j = 0; j < Math.Min(output.Length, maxLines); ++j)
+            {
+                if (output[j].Length > maxChars)
+                {
+                    Console.WriteLine(output[j].Substring(0, maxChars) + " (+ " + (output[j].Length - maxChars) + " chars)");
+                }
+                else
+                {
+                    Console.WriteLine(output[j]);
+                }
+            }
+            if (output.Length > maxLines)
+            {
+                Console.WriteLine("(+ " + (output.Length - maxLines) + " lines)");
             }
         }
     }
