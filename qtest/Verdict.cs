@@ -13,6 +13,7 @@ namespace qtest
         TimeLimitExceeded,
         MemoryLimitExceeded,
         RuntimeError,
-        TimeLimitPassed
+        TimeLimitPassed,
+        CheckerError
     }
 }
