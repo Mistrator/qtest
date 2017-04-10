@@ -11,5 +11,6 @@ namespace qtest
         public string[] output; // either program output or crash message, depending on result
         public int timeMillis;
         public long memoryBytes;
+        public int exitCode;
     }
 }

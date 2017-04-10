@@ -59,6 +59,8 @@ namespace qtest
         const string OUTPUT_START = "_out";
 
         const string ANY_ANSWER = "#any"; // if specified, user answer is always correct. Allows large test cases for which correct answers are not known
+
+        const int DEFAULT_TIME_LIMIT = 1000;
         
         /* Checker input format: 
          * <user token count> <correct token count> <parameter count>
@@ -100,33 +102,36 @@ namespace qtest
             int timeLimit = 0;
             long memoryLimit = 0;
 
-            try
+            if (File.Exists(TestFolder + LIMIT_FILE))
             {
-                string[] limits = File.ReadAllLines(TestFolder + LIMIT_FILE);
-                if (limits.Length < 1)
+                try
                 {
-                    //Console.WriteLine("Invalid limits.txt, correct format:\n <time limit, ms>\n <memory limit, bytes>");
-                    Console.WriteLine("Invalid limits.txt, correct format:\n <time limit, ms>");
-                }
+                    string[] limits = File.ReadAllLines(TestFolder + LIMIT_FILE);
+                    if (limits.Length < 1)
+                    {
+                        //Console.WriteLine("Invalid limits.txt, correct format:\n <time limit, ms>\n <memory limit, bytes>");
+                        Console.WriteLine("Invalid limits.txt, correct format:\n <time limit, ms>");
+                    }
 
-                timeLimit = int.Parse(limits[0]);
-                //memoryLimit = long.Parse(limits[1]);
+                    timeLimit = int.Parse(limits[0]);
+                    //memoryLimit = long.Parse(limits[1]);
+                }
+                catch (DirectoryNotFoundException)
+                {
+                    Console.WriteLine("Test directory does not exist.");
+                    return;
+                }
+                catch (FormatException)
+                {
+                    Console.WriteLine("Invalid number format in limits.txt");
+                    return;
+                }
             }
-            catch (DirectoryNotFoundException)
+            else
             {
-                Console.WriteLine("Test directory does not exist.");
-                return;
+                timeLimit = DEFAULT_TIME_LIMIT;
             }
-            catch (FileNotFoundException)
-            {
-                Console.WriteLine("limits.txt is missing");
-                return;
-            }
-            catch (FormatException)
-            {
-                Console.WriteLine("Invalid number format in limits.txt");
-                return;
-            }
+            
 
             List<string[]>[] tCases = GetTestCases();
 
@@ -149,7 +154,7 @@ namespace qtest
             for (int i = 0; i < testInputs.Count; ++i)
             {
                 // run current test case
-                Result curResult = Execute(testInputs[i], timeLimit, memoryLimit);
+                Result curResult = RunTest(testInputs[i], timeLimit, memoryLimit);
 
                 // either TLE, MLE or RTE, no need to do checking
                 if (curResult.result != Verdict.ExecutionOk)
@@ -265,7 +270,7 @@ namespace qtest
         /// <param name="input">Data fed to standard input</param>
         /// <param name="timeLimitMillis">Maximum allowed runtime</param>
         /// <returns>Output, exit code, runtime in milliseconds</returns>
-        static Tuple<List<string>, int, long> RunExternalProgram(string program, string[] input, int timeLimitMillis)
+        static Result RunExternalProgram(string program, string[] input, int timeLimitMillis)
         {
             ProcessStartInfo stInfo = new ProcessStartInfo();
             stInfo.UseShellExecute = false;
@@ -277,9 +282,8 @@ namespace qtest
             testProc.StartInfo = stInfo;
 
             Stopwatch runTime = new Stopwatch();
-         
-            testProc.Start();
 
+            testProc.Start();
             runTime.Start();
 
             List<string> output = new List<string>();
@@ -287,7 +291,7 @@ namespace qtest
             {
                 output.Add(ea.Data);
             };
-            testProc.BeginOutputReadLine();
+            testProc.BeginOutputReadLine();       
 
             for (int i = 0; i < input.Length; ++i)
             {
@@ -295,16 +299,36 @@ namespace qtest
             }
 
             bool tle;
-            if ((timeLimitMillis - (int)runTime.ElapsedMilliseconds) <= 0) tle = true;
+            if ((timeLimitMillis - (int)runTime.ElapsedMilliseconds) <= 0) tle = true; // check if limit is already exceeded
             else tle = !testProc.WaitForExit(timeLimitMillis - (int)runTime.ElapsedMilliseconds); // true if tle
-            if (tle) testProc.Kill();
             runTime.Stop();
+
+            if (tle) testProc.Kill();
 
             testProc.WaitForExit(); // wait for kill
 
-            int exitCode = testProc.ExitCode;
+            Result res = new Result();
+            res.exitCode = testProc.ExitCode;
+            res.timeMillis = (int)runTime.ElapsedMilliseconds;
+
             output.RemoveAt(output.Count - 1); // outputdatareceived adds an extra line to output, remove it
-            return Tuple.Create(output, exitCode, runTime.ElapsedMilliseconds);
+            res.output = output.ToArray();
+
+            if (tle)
+            {
+                res.result = Verdict.TimeLimitExceeded;
+            }
+            else if (res.exitCode != 0)
+            {
+                res.result = Verdict.RuntimeError;
+            }
+            else
+            {
+                res.result = Verdict.ExecutionOk;
+            }
+
+            testProc.Close();
+            return res;
         }
 
         /// <summary>
@@ -314,9 +338,9 @@ namespace qtest
         /// <param name="timeLimitMillis">Time limit for execution</param>
         /// <param name="memLimitBytes">Memory limit for execution</param>
         /// <returns></returns>
-        static Result Execute(string[] testInput, int timeLimitMillis, long memLimitBytes)
+        static Result RunTest(string[] testInput, int timeLimitMillis, long memLimitBytes)
         {
-            Tuple<List<string>, int, long> runResult = null; // output, exit code, execution time
+            Result runResult = null;
             try
             {
                 runResult = RunExternalProgram(TestedProgram, testInput, timeLimitMillis);
@@ -326,28 +350,11 @@ namespace qtest
                 Console.WriteLine("The specified program is invalid and can not be executed.");
                 Environment.Exit(1);
             }
- 
-            Result res = new Result();
-            if (runResult.Item3 >= timeLimitMillis) // execution time
-            {
-                res.result = Verdict.TimeLimitExceeded;
-            }
-            else if (runResult.Item2 != 0) // exit code
-            {
-                res.result = Verdict.RuntimeError;
-            }
-            else
-            {
-                res.result = Verdict.ExecutionOk;
-            }
-            res.timeMillis = (int)runResult.Item3;
-            res.output = runResult.Item1.ToArray();
-            return res;
+            return runResult;
         }
 
         /// <summary>
         /// Checks if the user output was correct.
-        /// TODO: Implement support for external checker programs
         /// </summary>
         /// <param name="correctOutput">Correct output for current test case</param>
         /// <param name="runResult">Execution results</param>
@@ -394,7 +401,7 @@ namespace qtest
         /// <returns></returns>
         static Result CheckExternal(string[] correctOutput, Result runResult)
         {
-            Tuple<List<string>, int, long> checkRunResult = null;
+            Result checkRunResult = null;
 
             try
             {
@@ -417,32 +424,32 @@ namespace qtest
                 Environment.Exit(1);
             }
 
-            if (checkRunResult.Item3 >= CHECKER_TIME_LIMIT) // time limit
+            if (checkRunResult.result == Verdict.TimeLimitExceeded)
             {
                 runResult.output = new string[1] { "Checker timed out." };
                 runResult.result = Verdict.CheckerError;
             }
-            if (checkRunResult.Item2 != 0)
+            if (checkRunResult.result == Verdict.RuntimeError)
             {
-                runResult.output = new string[1] { "Checker exited with non-zero code." };
+                runResult.output = new string[1] { "Checker exited with non-zero exit code." };
                 runResult.result = Verdict.CheckerError;
             }
-            if (checkRunResult.Item1.Count == 0)
+            if (checkRunResult.output.Length == 0)
             {
                 runResult.output = new string[1] { "Checker returned nothing." };
                 runResult.result = Verdict.CheckerError;
             }
-            else if (checkRunResult.Item1[0] == CHECKER_WRONG_ANSWER)
+            else if (checkRunResult.output[0] == CHECKER_WRONG_ANSWER)
             {
                 runResult.result = Verdict.WrongAnswer;
             }
-            else if (checkRunResult.Item1[0] == CHECKER_ACCEPTED)
+            else if (checkRunResult.output[0] == CHECKER_ACCEPTED)
             {
                 runResult.result = Verdict.Accepted;
             }
             else
             {
-                runResult.output = new string[2] { "Checker returned something unexpected: ", checkRunResult.Item1[0] };
+                runResult.output = new string[2] { "Unexpected verdict from checker: ", checkRunResult.output[0] };
                 runResult.result = Verdict.CheckerError;
             }
             return runResult;
@@ -521,8 +528,8 @@ namespace qtest
                 Console.WriteLine();
 
                 // how much of the output do we print
-                const int MAX_LINES = 5;
-                const int MAX_CHARS = 64;
+                const int MAX_LINES = 5; // 5
+                const int MAX_CHARS = 64; // 64
 
                 if (TestResults[i].result == Verdict.WrongAnswer)
                 {
