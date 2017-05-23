@@ -291,12 +291,13 @@ namespace qtest
             {
                 output.Add(ea.Data);
             };
-            testProc.BeginOutputReadLine();       
+            testProc.BeginOutputReadLine();
 
             for (int i = 0; i < input.Length; ++i)
             {
                 testProc.StandardInput.WriteLine(input[i]);
             }
+
 
             bool tle;
             if ((timeLimitMillis - (int)runTime.ElapsedMilliseconds) <= 0) tle = true; // check if limit is already exceeded
@@ -314,13 +315,13 @@ namespace qtest
             output.RemoveAt(output.Count - 1); // outputdatareceived adds an extra line to output, remove it
             res.output = output.ToArray();
 
-            if (tle)
-            {
-                res.result = Verdict.TimeLimitExceeded;
-            }
-            else if (res.exitCode != 0)
+            if (res.exitCode != 0)
             {
                 res.result = Verdict.RuntimeError;
+            }
+            else if (tle)
+            {
+                res.result = Verdict.TimeLimitExceeded;
             }
             else
             {
@@ -517,7 +518,7 @@ namespace qtest
                 }
                 Console.ResetColor();
                 Console.Write(" (");
-                if (TestResults[i].result == Verdict.TimeLimitExceeded) Console.Write("--");
+                if (TestResults[i].result == Verdict.TimeLimitExceeded || TestResults[i].result == Verdict.RuntimeError) Console.Write("--");
                 else Console.Write(TestResults[i].timeMillis + " ms");
                 Console.Write(" / ");
                 Console.Write(timeLimit + " ms");
