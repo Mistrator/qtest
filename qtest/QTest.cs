@@ -298,7 +298,6 @@ namespace qtest
                 testProc.StandardInput.WriteLine(input[i]);
             }
 
-
             bool tle;
             if ((timeLimitMillis - (int)runTime.ElapsedMilliseconds) <= 0) tle = true; // check if limit is already exceeded
             else tle = !testProc.WaitForExit(timeLimitMillis - (int)runTime.ElapsedMilliseconds); // true if tle
@@ -315,13 +314,13 @@ namespace qtest
             output.RemoveAt(output.Count - 1); // outputdatareceived adds an extra line to output, remove it
             res.output = output.ToArray();
 
-            if (res.exitCode != 0)
-            {
-                res.result = Verdict.RuntimeError;
-            }
-            else if (tle)
+            if (tle)
             {
                 res.result = Verdict.TimeLimitExceeded;
+            }
+            else if (res.exitCode != 0)
+            {
+                res.result = Verdict.RuntimeError;
             }
             else
             {
