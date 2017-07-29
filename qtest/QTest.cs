@@ -533,8 +533,16 @@ namespace qtest
 
                 if (TestResults[i].result == Verdict.WrongAnswer)
                 {
-                    Console.WriteLine("Incorrect output: ");
-                    PrintOutput(TestResults[i].output, MAX_LINES, MAX_CHARS);
+                    if (TestResults[i].output.Length > 0)
+                    {
+                        Console.WriteLine("Incorrect output: ");
+                        PrintOutput(TestResults[i].output, MAX_LINES, MAX_CHARS);
+                    }
+                    else
+                    {
+                        PrintOutput(new string[1] {"(no output)"}, MAX_LINES, MAX_CHARS);
+                    }
+                    
                 }   
 
                 if (TestResults[i].result == Verdict.TimeLimitPassed)
