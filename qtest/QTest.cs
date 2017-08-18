@@ -50,10 +50,19 @@ namespace qtest
          *          _out
          *          #any
          */
+#if WINDOWS
         const string INPUT_FILE = "in.txt";
         const string OUTPUT_FILE = "out.txt";
         const string LIMIT_FILE = "limits.txt";
         const string TEST_FILE = "tests.txt";
+        const string PATH_SEPARATOR = "\\";
+#elif LINUX
+        const string INPUT_FILE = "in";
+        const string OUTPUT_FILE = "out";
+        const string LIMIT_FILE = "limits";
+        const string TEST_FILE = "tests";
+        const string PATH_SEPARATOR = "/";
+#endif
 
         const string INPUT_START = "_in";
         const string OUTPUT_START = "_out";
@@ -87,11 +96,11 @@ namespace qtest
             }
 
             QTestDirectory = AppDomain.CurrentDomain.BaseDirectory;
-            LaunchDirectory = Environment.CurrentDirectory + "\\";
+            LaunchDirectory = Environment.CurrentDirectory + PATH_SEPARATOR;
             TestedProgram = LaunchDirectory + args[0];
-            TestFolder = LaunchDirectory + args[1] + "\\";
+            TestFolder = LaunchDirectory + args[1] + PATH_SEPARATOR;
             CheckerProgram = "";
-            if (args.Length >= 3) CheckerProgram = QTestDirectory + "\\" + args[2];
+            if (args.Length >= 3) CheckerProgram = QTestDirectory + PATH_SEPARATOR + args[2];
 
             CheckerParameters = new List<string>();
             for (int i = 3; i < args.Length; ++i)
@@ -228,7 +237,7 @@ namespace qtest
 
             for (int i = 0; i < testFolders.Length; ++i)
             {
-                string currentFolder = testFolders[i] + "\\";
+                string currentFolder = testFolders[i] + PATH_SEPARATOR;
                 string[] testInput = null;
                 string[] testOutput = null;
                 try
