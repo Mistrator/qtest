@@ -551,7 +551,6 @@ namespace qtest
                     {
                         PrintOutput(new string[1] {"(no output)"}, MAX_LINES, MAX_CHARS);
                     }
-                    
                 }   
 
                 if (TestResults[i].result == Verdict.TimeLimitPassed)
@@ -563,6 +562,33 @@ namespace qtest
                 if (TestResults[i].result == Verdict.CheckerError)
                 {
                     PrintOutput(TestResults[i].output, MAX_LINES, MAX_CHARS);
+                }
+
+                if (TestResults[i].result == Verdict.RuntimeError)
+                {
+                    Console.Write("Exit code: ");
+#if WINDOWS
+                    PrintOutput(new string[1] { TestResults[i].exitCode.ToString() }, MAX_LINES, MAX_CHARS);
+#elif LINUX
+                    List<string> t = new List<string>();
+                    t.Add(TestResults[i].exitCode.ToString());
+                    switch (TestResults[i].exitCode)
+                    {
+                        case 134:
+                            t[0] += " (aborted)";
+                            t.Add("[SIGIOT: signed integer overflow]");
+                            break;
+                        case 136:
+                            t[0] += " (floating point exception)";
+                            t.Add("[SIGFPE: division by zero]");
+                            break;
+                        case 139:
+                            t[0] += " (segmentation fault)";
+                            t.Add("[SIGSEGV: invalid memory access or stack overflow]");
+                            break;
+                    }
+                    PrintOutput(t.ToArray(), MAX_LINES, MAX_CHARS);
+#endif
                 }
             }
         }
