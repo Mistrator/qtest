@@ -69,6 +69,8 @@ namespace qtest
 
         const string ANY_ANSWER = "#any"; // if specified, user answer is always correct. Allows large test cases for which correct answers are not known
 
+        const string COMMENT = "//";
+
         const int DEFAULT_TIME_LIMIT = 1000;
         
         /* Checker input format: 
@@ -146,9 +148,10 @@ namespace qtest
 
             List<string[]> testInputs = tCases[0];
             List<string[]> testOutputs = tCases[1];
+            List<string[]> testComments = tCases[2];
 
             //Console.WriteLine("Time limit: " + timeLimit + " ms, memory limit: " + (memoryLimit / 1000) + " kB."); // TODO: uncomment when memory bug is fixed
-            if (CheckerProgram != "")
+            if (CheckerProgram != String.Empty)
             {
                 Console.WriteLine("Checker: " + args[2]);
             }
@@ -175,7 +178,7 @@ namespace qtest
                 TestResults.Add(curResult);
             }
 
-            PrintResults(timeLimit, memoryLimit);
+            PrintResults(timeLimit, memoryLimit, testComments);
         }
 
         /// <summary>
@@ -186,6 +189,7 @@ namespace qtest
         {
             List<string[]> testInputs = new List<string[]>();
             List<string[]> testOutputs = new List<string[]>();
+            List<string[]> testComments = new List<string[]>();
 
             // all lines from tests.txt
             string[] testFileCont = null;
@@ -202,20 +206,32 @@ namespace qtest
                 // read tests.txt
                 bool isInput = false; // are we currently reading input or output
                 List<string> curData = new List<string>();
+                List<string> curComment = new List<string>(); // only a single line, but implemented like this to return the comments with test data
 
                 for (int i = 0; i <= testFileCont.Length; ++i) // intentional <= to register last test
                 {
-                    if (i == testFileCont.Length || testFileCont[i] == INPUT_START || testFileCont[i] == OUTPUT_START) // end of test case
+                    bool inStart = (i < testFileCont.Length && testFileCont[i].Length >= 3 && testFileCont[i].Substring(0, 3) == INPUT_START);
+                    bool outStart = (i < testFileCont.Length && testFileCont[i].Length >= 4 && testFileCont[i].Substring(0, 4) == OUTPUT_START);
+                    if (i == testFileCont.Length || inStart || outStart) // end of test case
                     {
                         if (curData.Count != 0)
                         {
-                            if (isInput) testInputs.Add(curData.ToArray());
+                            if (isInput)
+                            {
+                                testInputs.Add(curData.ToArray());
+                                if (curComment.Count == 0)
+                                {
+                                    curComment.Add(String.Empty);
+                                }
+                                testComments.Add(curComment.ToArray());
+                            }
                             else testOutputs.Add(curData.ToArray());
                             curData.Clear();
+                            curComment.Clear();
                         }
                         if (i < testFileCont.Length)
                         {
-                            bool nIsInput = testFileCont[i] == INPUT_START;
+                            bool nIsInput = inStart;
                             if (nIsInput == isInput)
                             {
                                 Console.WriteLine("Multiple test inputs or outputs in a row");
@@ -223,10 +239,18 @@ namespace qtest
                             }
                             isInput = nIsInput;
                         }
+                        if (inStart && testFileCont[i].Length > 3)
+                        {
+                            curComment.Add(testFileCont[i].Substring(3, testFileCont[i].Length - 3).Trim());
+                        }
                     }
                     else
                     {
-                        curData.Add(testFileCont[i]);
+                        // skip comment lines
+                        if (!(testFileCont[i].Length >= 2 && testFileCont[i].Substring(0, 2) == COMMENT))
+                        {
+                            curData.Add(testFileCont[i]);
+                        }
                     }
                 }
             }
@@ -266,9 +290,10 @@ namespace qtest
                 Environment.Exit(1);
             }
 
-            List<string[]>[] res = new List<string[]>[2];
+            List<string[]>[] res = new List<string[]>[3];
             res[0] = testInputs;
             res[1] = testOutputs;
+            res[2] = testComments;
             return res;
         }
 
@@ -469,7 +494,7 @@ namespace qtest
         /// </summary>
         /// <param name="timeLimit"></param>
         /// <param name="memoryLimit"></param>
-        static void PrintResults(int timeLimit, long memoryLimit)
+        static void PrintResults(int timeLimit, long memoryLimit, List<string[]> testComments)
         {
             bool accepted = true;
             for (int i = 0; i < TestResults.Count; ++i)
@@ -534,6 +559,14 @@ namespace qtest
                 /*Console.Write(", ");
                 Console.Write((TestResults[i].memoryBytes / 1000) + " kB used"); // TODO: uncomment when memory bug is fixed
                 Console.Write(")");*/
+
+                if (testComments[i][0] != String.Empty)
+                {
+                    Console.Write(" (");
+                    Console.Write(testComments[i][0]);
+                    Console.Write(")");
+                }
+
                 Console.WriteLine();
 
                 // how much of the output do we print
