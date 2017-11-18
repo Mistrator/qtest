@@ -24,6 +24,10 @@ namespace qtest
         static string CheckerProgram;
         static List<string> CheckerParameters;
 
+        // flags
+        const string TRUNCATE_FLAG = "a";
+        static bool TruncateOutput = true; // limit lines shown when printing test results
+
 
         /*  Example folder structure:
          *  program.exe
@@ -94,20 +98,53 @@ namespace qtest
             if (args.Length < 2)
             {
                 Console.WriteLine("Usage: qtest <program> <test folder> [checker program] [checker parameters]");
+                Console.WriteLine("Flags: " + TRUNCATE_FLAG + " - unlimited output");
                 return;
+            }
+
+            List<string> arguments = new List<string>();
+            List<string> flags = new List<string>();
+
+            for (int i = 0; i < args.Length; ++i)
+            {
+                if (args[i][0] == '-')
+                {
+                    if (args[i].Length <= 1)
+                    {
+                        Console.WriteLine("Invalid flag (flag is empty)");
+                        return;
+                    }
+                    flags.Add(args[i].Substring(1));
+                }
+                else
+                {
+                    arguments.Add(args[i]);
+                }
             }
 
             QTestDirectory = AppDomain.CurrentDomain.BaseDirectory;
             LaunchDirectory = Environment.CurrentDirectory + PATH_SEPARATOR;
-            TestedProgram = LaunchDirectory + args[0];
-            TestFolder = LaunchDirectory + args[1] + PATH_SEPARATOR;
+            TestedProgram = LaunchDirectory + arguments[0];
+            TestFolder = LaunchDirectory + arguments[1] + PATH_SEPARATOR;
             CheckerProgram = "";
-            if (args.Length >= 3) CheckerProgram = QTestDirectory + PATH_SEPARATOR + args[2];
+            if (arguments.Count >= 3) CheckerProgram = QTestDirectory + PATH_SEPARATOR + arguments[2];
 
             CheckerParameters = new List<string>();
-            for (int i = 3; i < args.Length; ++i)
+            for (int i = 3; i < arguments.Count; ++i)
             {
-                CheckerParameters.Add(args[i]);
+                CheckerParameters.Add(arguments[i]);
+            }
+
+            foreach (string s in flags) {
+                if (s == TRUNCATE_FLAG)
+                {
+                    TruncateOutput = false;
+                }
+                else
+                {
+                    Console.WriteLine("Unknown flag \"" + s + "\"");
+                    return;
+                }
             }
 
             int timeLimit = 0;
@@ -153,7 +190,7 @@ namespace qtest
             //Console.WriteLine("Time limit: " + timeLimit + " ms, memory limit: " + (memoryLimit / 1000) + " kB."); // TODO: uncomment when memory bug is fixed
             if (CheckerProgram != String.Empty)
             {
-                Console.WriteLine("Checker: " + args[2]);
+                Console.WriteLine("Checker: " + arguments[2]);
             }
             else
             {
@@ -264,6 +301,8 @@ namespace qtest
                 string currentFolder = testFolders[i] + PATH_SEPARATOR;
                 string[] testInput = null;
                 string[] testOutput = null;
+                // add empty string so that input, output and comment counts match
+                string[] testComment = { String.Empty }; // TODO: support comments in separate test files
                 try
                 {
                     testInput = File.ReadAllLines(currentFolder + INPUT_FILE);
@@ -276,6 +315,7 @@ namespace qtest
                 }
                 testInputs.Add(testInput);
                 testOutputs.Add(testOutput);
+                testComments.Add(testComment);
             }
 
             // sanity checks
@@ -570,8 +610,8 @@ namespace qtest
                 Console.WriteLine();
 
                 // how much of the output do we print
-                const int MAX_LINES = 5; // 5
-                const int MAX_CHARS = 64; // 64
+                int MAX_LINES = TruncateOutput ? 5 : int.MaxValue; // 5
+                int MAX_CHARS = TruncateOutput ? 64 : int.MaxValue; // 64
 
                 if (TestResults[i].result == Verdict.WrongAnswer)
                 {
