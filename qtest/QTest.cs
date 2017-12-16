@@ -28,6 +28,9 @@ namespace qtest
         const string TRUNCATE_FLAG = "a";
         static bool TruncateOutput = true; // limit lines shown when printing test results
 
+        const string EXECUTOR_FLAG = "p";
+        static string ProgramExecutor = String.Empty; // use another program to run tested program, has to be used with, for example, Python and Java
+
 
         /*  Example folder structure:
          *  program.exe
@@ -98,53 +101,25 @@ namespace qtest
             if (args.Length < 2)
             {
                 Console.WriteLine("Usage: qtest <program> <test folder> [checker program] [checker parameters]");
-                Console.WriteLine("Flags: " + TRUNCATE_FLAG + " - unlimited output");
-                return;
+                Console.WriteLine("Flags:"); 
+                Console.WriteLine("-" + TRUNCATE_FLAG + " = show all output");
+                Console.WriteLine("-" + EXECUTOR_FLAG + " <executor program> = execute tested program with another program (with Java virtual machine/Python interpreter, for example). Tested program is passed to executor as a command line argument");
+                Error(String.Empty);
             }
 
-            List<string> arguments = new List<string>();
-            List<string> flags = new List<string>();
-
-            for (int i = 0; i < args.Length; ++i)
-            {
-                if (args[i][0] == '-')
-                {
-                    if (args[i].Length <= 1)
-                    {
-                        Console.WriteLine("Invalid flag (flag is empty)");
-                        return;
-                    }
-                    flags.Add(args[i].Substring(1));
-                }
-                else
-                {
-                    arguments.Add(args[i]);
-                }
-            }
+            string[] cleanedArgs = ProcessFlags(args);
 
             QTestDirectory = AppDomain.CurrentDomain.BaseDirectory;
             LaunchDirectory = Environment.CurrentDirectory + PATH_SEPARATOR;
-            TestedProgram = LaunchDirectory + arguments[0];
-            TestFolder = LaunchDirectory + arguments[1] + PATH_SEPARATOR;
-            CheckerProgram = "";
-            if (arguments.Count >= 3) CheckerProgram = QTestDirectory + PATH_SEPARATOR + arguments[2];
+            TestedProgram = LaunchDirectory + cleanedArgs[0];
+            TestFolder = LaunchDirectory + cleanedArgs[1] + PATH_SEPARATOR;
+            CheckerProgram = String.Empty;
+            if (cleanedArgs.Length >= 3) CheckerProgram = QTestDirectory + PATH_SEPARATOR + cleanedArgs[2];
 
             CheckerParameters = new List<string>();
-            for (int i = 3; i < arguments.Count; ++i)
+            for (int i = 3; i < cleanedArgs.Length; ++i)
             {
-                CheckerParameters.Add(arguments[i]);
-            }
-
-            foreach (string s in flags) {
-                if (s == TRUNCATE_FLAG)
-                {
-                    TruncateOutput = false;
-                }
-                else
-                {
-                    Console.WriteLine("Unknown flag \"" + s + "\"");
-                    return;
-                }
+                CheckerParameters.Add(cleanedArgs[i]);
             }
 
             int timeLimit = 0;
@@ -158,7 +133,7 @@ namespace qtest
                     if (limits.Length < 1)
                     {
                         //Console.WriteLine("Invalid limits.txt, correct format:\n <time limit, ms>\n <memory limit, bytes>");
-                        Console.WriteLine("Invalid limits.txt, correct format:\n <time limit, ms>");
+                        Error("Invalid limits.txt, correct format:\n <time limit, ms>");
                     }
 
                     timeLimit = int.Parse(limits[0]);
@@ -166,13 +141,11 @@ namespace qtest
                 }
                 catch (DirectoryNotFoundException)
                 {
-                    Console.WriteLine("Test directory does not exist.");
-                    return;
+                    Error("Test directory does not exist.");
                 }
                 catch (FormatException)
                 {
-                    Console.WriteLine("Invalid number format in limits.txt");
-                    return;
+                    Error("Invalid number format in limits.txt");
                 }
             }
             else
@@ -190,7 +163,7 @@ namespace qtest
             //Console.WriteLine("Time limit: " + timeLimit + " ms, memory limit: " + (memoryLimit / 1000) + " kB."); // TODO: uncomment when memory bug is fixed
             if (CheckerProgram != String.Empty)
             {
-                Console.WriteLine("Checker: " + arguments[2]);
+                Console.WriteLine("Checker: " + cleanedArgs[2]);
             }
             else
             {
@@ -216,6 +189,65 @@ namespace qtest
             }
 
             PrintResults(timeLimit, memoryLimit, testComments);
+        }
+
+        /// <summary>
+        /// Print error message and terminate process
+        /// </summary>
+        /// <param name="message"></param>
+        static void Error(string message)
+        {
+            Console.WriteLine(message);
+            Environment.Exit(1);
+        }
+
+        /// <summary>
+        /// Process and remove flags from command line parameters and return other parameters
+        /// </summary>
+        /// <param name="args"></param>
+        /// <returns>Command line parameters without flags</returns>
+        static string[] ProcessFlags(string[] args)
+        {
+            List<string> arguments = new List<string>();
+
+            for (int i = 0; i < args.Length; ++i)
+            {
+                if (args[i][0] == '-')
+                {
+                    if (args[i].Length <= 1)
+                    {
+                        Error("Invalid flag (flag is empty)");
+                    }
+                    string curFlag = args[i].Substring(1);
+
+                    switch (curFlag)
+                    {
+                        case TRUNCATE_FLAG:
+                            TruncateOutput = false;
+                            break;
+                        case EXECUTOR_FLAG:
+                            if (i == args.Length - 1)
+                            {
+                                Error("External executor flag is set, but flag parameter is missing");
+                            }
+                            i++; // get next token
+                            ProgramExecutor = args[i];
+                            if (ProgramExecutor[0] == '-')
+                            {
+                                Error("External executor flag is set, but flag parameter is missing");
+                            }
+                            break;
+                        default:
+                            Error("Unknown flag \"" + curFlag + "\"");
+                            break;
+                    }
+                }
+                else
+                {
+                    arguments.Add(args[i]);
+                }
+            }
+            return arguments.ToArray();
         }
 
         /// <summary>
@@ -350,7 +382,17 @@ namespace qtest
             stInfo.UseShellExecute = false;
             stInfo.RedirectStandardInput = true;
             stInfo.RedirectStandardOutput = true;
-            stInfo.FileName = program;
+
+            // pass tested program to another program as a command line argument
+            if (ProgramExecutor != String.Empty)
+            {
+                stInfo.FileName = ProgramExecutor;
+                stInfo.Arguments = program;
+            }
+            else
+            {
+                stInfo.FileName = program;
+            }
 
             Process testProc = new Process();
             testProc.StartInfo = stInfo;
