@@ -25,12 +25,14 @@ namespace qtest
         static List<string> CheckerParameters;
 
         // flags
-        const string TRUNCATE_FLAG = "a";
+        const string TRUNCATE_FLAG = "-a";
         static bool TruncateOutput = true; // limit lines shown when printing test results
 
-        const string EXECUTOR_FLAG = "p";
+        const string EXECUTOR_FLAG = "-p";
         static string ProgramExecutor = String.Empty; // use another program to run tested program, has to be used with, for example, Python and Java
 
+        const string TIME_LIMIT_FLAG = "-t";
+        static int TimeLimitOverride = 0;
 
         /*  Example folder structure:
          *  program.exe
@@ -102,8 +104,9 @@ namespace qtest
             {
                 Console.WriteLine("Usage: qtest <program> <test folder> [checker program] [checker parameters]");
                 Console.WriteLine("Flags:"); 
-                Console.WriteLine("-" + TRUNCATE_FLAG + " = show all output");
-                Console.WriteLine("-" + EXECUTOR_FLAG + " <executor program> = execute tested program with another program (with Java virtual machine/Python interpreter, for example). Tested program is passed to executor as a command line argument");
+                Console.WriteLine(TRUNCATE_FLAG + " = show all output");
+                Console.WriteLine(EXECUTOR_FLAG + " <executor program> = execute tested program with another program (with Java virtual machine/Python interpreter, for example). Tested program is passed to executor as a command line argument");
+                Console.WriteLine(TIME_LIMIT_FLAG + " <time limit (ms)> = override time limit for this test run");
                 Error(String.Empty);
             }
 
@@ -151,6 +154,11 @@ namespace qtest
             else
             {
                 timeLimit = DEFAULT_TIME_LIMIT;
+            }
+
+            if (TimeLimitOverride != 0)
+            {
+                timeLimit = TimeLimitOverride;
             }
             
 
@@ -212,34 +220,29 @@ namespace qtest
 
             for (int i = 0; i < args.Length; ++i)
             {
-                if (args[i][0] == '-')
+                if (args[i] == TRUNCATE_FLAG)
                 {
-                    if (args[i].Length <= 1)
+                    TruncateOutput = false;
+                }
+                else if (args[i] == EXECUTOR_FLAG)
+                {
+                    if (i == args.Length - 1)
                     {
-                        Error("Invalid flag (flag is empty)");
+                        Error("External executor flag is set, but flag parameter is missing");
                     }
-                    string curFlag = args[i].Substring(1);
-
-                    switch (curFlag)
+                    i++;
+                    ProgramExecutor = args[i];
+                }
+                else if (args[i] == TIME_LIMIT_FLAG)
+                {
+                    if (i == args.Length - 1)
                     {
-                        case TRUNCATE_FLAG:
-                            TruncateOutput = false;
-                            break;
-                        case EXECUTOR_FLAG:
-                            if (i == args.Length - 1)
-                            {
-                                Error("External executor flag is set, but flag parameter is missing");
-                            }
-                            i++; // get next token
-                            ProgramExecutor = args[i];
-                            if (ProgramExecutor[0] == '-')
-                            {
-                                Error("External executor flag is set, but flag parameter is missing");
-                            }
-                            break;
-                        default:
-                            Error("Unknown flag \"" + curFlag + "\"");
-                            break;
+                        Error("Time limit flag is set, but flag parameter is missing");
+                    }
+                    i++;
+                    if (!int.TryParse(args[i], out TimeLimitOverride))
+                    {
+                        Error("Specified time limit is invalid");
                     }
                 }
                 else
@@ -260,14 +263,18 @@ namespace qtest
             List<string[]> testOutputs = new List<string[]>();
             List<string[]> testComments = new List<string[]>();
 
+            if (!Directory.Exists(TestFolder))
+            {
+                Error("Test folder doesn't exist");
+            }
+
             // all lines from tests.txt
             string[] testFileCont = null;
-            try
+
+            // doesn't have to exist, it's allowed to have all tests in separate files
+            if (File.Exists(TestFolder + TEST_FILE))
             {
                 testFileCont = File.ReadAllLines(TestFolder + TEST_FILE);
-            }
-            catch (FileNotFoundException)
-            {
             }
 
             if (testFileCont != null)
@@ -303,8 +310,7 @@ namespace qtest
                             bool nIsInput = inStart;
                             if (nIsInput == isInput)
                             {
-                                Console.WriteLine("Multiple test inputs or outputs in a row");
-                                Environment.Exit(1);
+                                Error("Multiple test inputs or outputs in a row");
                             }
                             isInput = nIsInput;
                         }
